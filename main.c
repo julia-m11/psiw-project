@@ -5,128 +5,148 @@
 #include <unistd.h>
 #include <string.h>
 
-void* removeThreadFunction(void* list) {
-    char* searchData = "data";
-    int result = removeItem((TList*)list, searchData);
-    printf("Wątek usuwający: próba usunięcia, wynik: %d\n", result);
+
+#define NUM_THREADS 3
+
+// Funkcja dla testu 1 (dodawanie i usuwanie elementów)
+void* testAddAndRemove(void* arg) {
+    TList* list = (TList*)arg;
+    for (int i = 0; i < 10; ++i) {
+        char* item = (char*)malloc(20);
+        snprintf(item, 20, "Item %d", i);
+        putItem(list, item);
+        printf("Added: %s\n", item);
+
+        usleep(100000);  // Symulacja opóźnienia
+
+        void* removedItem = getItem(list);
+        printf("Removed: %s\n", (char*)removedItem);
+        free(removedItem);
+    }
     return NULL;
 }
 
-void* putThreadFunction(void* list) {
-    char* data = strdup("data");
-    putItem((TList*)list, data);
-    printf("Wątek dodający: dodano element '%s'\n", data);
+// Funkcja dla testu 2 (testowanie pełnej listy)
+void* testFullList(void* arg) {
+    TList* list = (TList*)arg;
+    for (int i = 0; i < 10; ++i) {
+        char* item = (char*)malloc(20);
+        snprintf(item, 20, "Item %d", i);
+        putItem(list, item);
+        printf("Added: %s\n", item);
+    }
     return NULL;
 }
 
-void* getThreadFunction(void* list) {
-    printf("Wątek pobierający - czekanie na element...\n");
-    void* item = getItem((TList*)list);
-    printf("Wątek pobierający: pobrano element '%s'\n", (char*)item);
-    free(item);  
+// Funkcja dla testu 3 (usuwanie elementu)
+// void* testRemoveItem(void* arg) {
+//     TList* list = (TList*)arg;
+//     for (int i = 0; i < 10; ++i) {
+//         char* item = (char*)malloc(20);
+//         snprintf(item, 20, "Item %d", i);
+//         putItem(list, item);
+//     }
+
+//     // Usuwamy elementy
+//     for (int i = 0; i < 5; ++i) {
+//         printf("Removing Item %d\n", i);
+//         char* itemToRemove = NULL;
+// for (struct Node* curr = list->head; curr != NULL; curr = curr->next) {
+//     if (strcmp((char*)curr->data, "Item 1") == 0) {
+//         itemToRemove = curr->data;
+//         break;
+//     }
+// }
+// if (itemToRemove && removeItem(list, itemToRemove) == 1) {
+//             printf("Removed Item 1\n");
+//         } else {
+//             printf("Item not found\n");
+//         }
+//     }
+//     return NULL;
+// }
+void* testRemoveItem(void* arg) {
+    TList* list = (TList*)arg;
+    
+    // Najpierw opróżniamy listę
+    while (list->numElem > 0) {
+        void* item = getItem(list);
+        free(item);
+    }
+    
+    // Teraz dodajemy własne elementy
+    char* items[5];  // zmniejszamy liczbę elementów
+    for (int i = 0; i < 5; ++i) {
+        items[i] = (char*)malloc(20);
+        snprintf(items[i], 20, "Item %d", i);
+        putItem(list, items[i]);
+        printf("Added for removal: %s\n", items[i]);
+    }
+
+    // Próbujemy usunąć konkretny element
+    for (int i = 0; i < 3; ++i) {  // zmniejszamy liczbę prób
+        printf("Trying to remove Item 1\n");
+        struct Node* curr = list->head;
+        void* itemToRemove = NULL;
+        
+        // Szukamy elementu "Item 1"
+        while (curr != NULL) {
+            if (strcmp((char*)curr->data, "Item 1") == 0) {
+                itemToRemove = curr->data;
+                break;
+            }
+            curr = curr->next;
+        }
+        
+        if (itemToRemove && removeItem(list, itemToRemove) == 1) {
+            printf("Successfully removed Item 1\n");
+        } else {
+            printf("Item 1 not found\n");
+        }
+        usleep(100000);  // krótka przerwa między próbami
+    }
     return NULL;
 }
 
 int main() {
+    TList* list = createList(10);
+    pthread_t threads[NUM_THREADS];
+    
+    // Test 1
+    printf("\n=== Test 1: Add and Remove ===\n");
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_create(&threads[i], NULL, testAddAndRemove, list);
+    }
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_join(threads[i], NULL);
+    }
+    
+    // Czyszczenie listy przed testem 2
+    while (list->numElem > 0) {
+        void* item = getItem(list);
+        free(item);
+    }
+    
+    // Test 2
+    printf("\n=== Test 2: Full List ===\n");
+    pthread_t fullListThread;
+    pthread_create(&fullListThread, NULL, testFullList, list);
+    pthread_join(fullListThread, NULL);
+    
+    // Czyszczenie listy przed testem 3
+    while (list->numElem > 0) {
+        void* item = getItem(list);
+        free(item);
+    }
+    
+    // Test 3
+    printf("\n=== Test 3: Remove Item ===\n");
+    pthread_t removeItemThread;
+    pthread_create(&removeItemThread, NULL, testRemoveItem, list);
+    pthread_join(removeItemThread, NULL);
 
-    //-------------Test 1 użycie removeItem()------------------
-
-    printf("Test 1 - użycie removeItem()\n");
-    printf("\n");
-
-    TList* list = createList(0);
-    pthread_t thread1, thread2, thread3;
-
-    printf("Lista utworzona, początkowa liczba elementów: %d\n", getCount(list));
-    printf("Uruchomienie dwóch wątków usuwających.\n");
-    pthread_create(&thread1, NULL, removeThreadFunction, list);
-    pthread_create(&thread2, NULL, removeThreadFunction, list);
-
-    sleep(2);
-
-    printf("Dodanie elementu do listy w innym wątku.\n");
-    pthread_create(&thread3, NULL, putThreadFunction, list);
-
-    pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL);
-    pthread_join(thread3, NULL);
-
-    int numElem = getCount(list);
-    printf("Ilość elementów na liście: %d \n", numElem);
-    printf("Zawartość końcowa:\n");
+    printf("\nFinal list contents:\n");
     showList(list);
     destroyList(list);
-
-    //-------------- Test 2 użycie funkcji blokujacej getItem() -----------------
-
-    printf("\n");
-    printf("Test 2 - użycie funkcji blokujacej getItem() z pustą listą.\n");
-    printf("\n");
-
-    TList* list1 = createList(0);
-    pthread_t thread4, thread5, thread6, thread7;
-
-    printf("Lista utworzona, początkowa liczba elementów: %d\n", getCount(list1));
-    printf("Uruchomienie dwóch wątków pobierających.\n");
-    pthread_create(&thread4, NULL, getThreadFunction, list1);
-    pthread_create(&thread5, NULL, getThreadFunction, list1);
-
-    sleep(2);
-
-    printf("Dodanie elementu do listy w innym wątku.\n");
-    pthread_create(&thread6, NULL, putThreadFunction, list1);
-    pthread_create(&thread7, NULL, putThreadFunction, list1);
-
-    pthread_join(thread4, NULL);
-    pthread_join(thread5, NULL);
-    pthread_join(thread6, NULL);
-    pthread_join(thread7, NULL);
-
-    int numElem1 = getCount(list1);
-    printf("Ilość elementów na liście: %d \n", numElem1);
-    
-    destroyList(list1);
-
-    //---------------- Test 3 uzycie funkcji setMaxSize() ---------------------
-
-    printf("\n");
-    printf("Test 3 - użycie funkcji setMaxSize()");
-    printf("\n");
-
-    TList* list2 = createList(0);
-    setMaxSize(list2, 3);
-    pthread_t thread8, thread9, thread10, thread11, thread12, thread13;
-
-    pthread_create(&thread8, NULL, putThreadFunction, list2);
-    pthread_create(&thread9, NULL, putThreadFunction, list2);
-    pthread_create(&thread10, NULL, putThreadFunction, list2);
-
-    sleep(2);
-    printf("Lista po dodaniu 3 elementów:\n");
-    showList(list2);
-
-    printf("Zmniejszenie maksymalnego rozmiaru listy do 2.\n");
-    setMaxSize(list2, 2);
-
-    printf("Próba dodania elemntu po zmniejszeniu maksymalnej wielkości - blokada.\n");
-    pthread_create(&thread11, NULL, putThreadFunction, list2);
-    printf("Oczekiwanie na usunięcie dwóch elementów...\n");
-    sleep(2);
-
-    pthread_create(&thread12, NULL, removeThreadFunction, list2);
-    pthread_create(&thread13, NULL, removeThreadFunction, list2);
-
-    pthread_join(thread8, NULL);
-    pthread_join(thread9, NULL);
-    pthread_join(thread10, NULL);
-    pthread_join(thread11, NULL);
-    pthread_join(thread12, NULL);
-    pthread_join(thread13, NULL);
-
-    printf("Stan końcowy listy:\n");
-    showList(list2);
-    
-    destroyList(list2);
-
     return 0;
 }

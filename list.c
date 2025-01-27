@@ -4,8 +4,7 @@
 #include <string.h>
 #include "list.h"
 
-TList* createList(int size) { //tworzenie listy o zadanym rozmiarze, barak operacji na tej samej liscie
-	int i;
+TList* createList(int size) { //tworzenie listy o zadanym max rozmiarze
 
 	struct TList* list = (struct TList*)malloc(sizeof(struct TList));
 	// obsluga bledu alokowania pamieci
@@ -20,7 +19,6 @@ TList* createList(int size) { //tworzenie listy o zadanym rozmiarze, barak opera
         free(list);
         return NULL;
     }
-
 	//------------zmienne warunkowe----------
     if (pthread_cond_init(&list->notFull, NULL) != 0) {
         perror("Błąd inicjalizacji zmiennej warunkowej notFull.");
@@ -35,62 +33,21 @@ TList* createList(int size) { //tworzenie listy o zadanym rozmiarze, barak opera
         free(list);
         return NULL;
     }
-    //---------------------------------------
-
-	list->maxSize = size + 200;
+  
+	list->maxSize = size;
 	list->numElem = 0;
-
-	if (size == 0) { //lista pusta
-		list->head = NULL;
-		list->tail = NULL;
-	}
-	else {
-		struct Node* headNode = (struct Node*)malloc(sizeof(struct Node));
-		// obsluga bledu alokowania pamieci dla głowy
-		if (headNode == NULL) {
-			perror("Błąd alokacji pamięci dla węzła.");
-			free(list);
-			return NULL;
-		}
-
-		headNode->data = NULL; //lista z jednym elementem
-		headNode->next = NULL;
-		list->head = headNode;
-		list->tail = headNode;
-		list->numElem = 1;
-
-		struct Node* currentNode = headNode;
-		for (i = 0; i < size - 1; i++) {
-			struct Node* node = (struct Node*)malloc(sizeof(struct Node));
-			//obsluga bledu alokowania pamieci
-			if (node == NULL) {
-				perror("Błąd alokacji pamięci dla węzła.");
-				struct Node* temp = list->head;
-				while (temp != NULL) { //usuwanie wezlow z listy
-					struct Node* next = temp->next;
-					free(temp);
-					temp = next;
-				}
-				free(list);
-				return NULL;
-			}
-			node->data = NULL;
-			node->next = NULL;
-			currentNode->next = node;
-			currentNode = node;
-			list->tail = node;
-			list->numElem++;
-		};
-	}
+	list->head = NULL;
+	list->tail = NULL;
 	return list;
 }
 
 void putItem(TList* list, void *el) { //operacja dodawania elementu el (reprezentowanego wskaźnikiem) na koniec
                                       //listy. Operacja może być blokująca, jeżeli lista zawiera już N lub więcej elementów.
-
+	printf("putItem: Zajmowanie mutexa listy\n");
     pthread_mutex_lock(&list->listMutex); //zajecie mutexa listy
 
     while (list->numElem >= list->maxSize) { //lista ma za duzo elementow, wiec watek musi czekac
+		printf("putItem: Lista pełna, wątek czeka na notFull\n");
         pthread_cond_wait(&list->notFull, &list->listMutex);
     }
 
@@ -98,6 +55,7 @@ void putItem(TList* list, void *el) { //operacja dodawania elementu el (reprezen
     struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
     if (newNode == NULL) {
         perror("Błąd alokacji pamięci dla węzła.");
+		pthread_mutex_unlock(&list->listMutex);
         return;
     }
 
@@ -107,22 +65,28 @@ void putItem(TList* list, void *el) { //operacja dodawania elementu el (reprezen
     if (list->numElem == 0) { //jesli lista bedzie pusta
         list->head = newNode;
         list->tail = newNode;
+		printf("putItem: Dodano element, lista była pusta\n");
     }
     else { // jesli ma juz elementy
         list->tail->next = newNode;
         list->tail = newNode;
+		printf("putItem: Dodano element na koniec listy\n");
     }
     list->numElem++;
+	printf("putItem: Liczba elementów po dodaniu: %d\n", list->numElem);
 	
     pthread_cond_signal(&list->notEmpty); //sygnal dla getItem itp.
+	printf("putItem: Wysłano sygnał notEmpty\n");
     pthread_mutex_unlock(&list->listMutex);
+	printf("putItem: Zwolniono mutex listy\n");
 }
 
 void* getItem(TList* list) { //operacja usuwania pierwszego (najstarszego) elementu z listy
-
+	printf("getItem: Zajmowanie mutexa listy\n");
     pthread_mutex_lock(&list->listMutex);
 
     while (list->numElem == 0) { //pusta lista - funkcja moze byc blokujaca
+		printf("getItem: Lista pusta, wątek czeka na notEmpty\n");
         pthread_cond_wait(&list->notEmpty, &list->listMutex);
     }
 
@@ -133,11 +97,14 @@ void* getItem(TList* list) { //operacja usuwania pierwszego (najstarszego) eleme
 		void* oldData = oldHead->data;
 		free(oldHead);
 		list->numElem--;
+		printf("getItem: Usunięto element, liczba elementów: %d\n", list->numElem);
 
 		if (list->numElem < list->maxSize){ //moze byc sytuaacja ze po usunieciu nadal elementów jest więcej niz maxSize
         	pthread_cond_signal(&list->notFull);
+			printf("getItem: Wysłano sygnał notFull\n");
 		}
         pthread_mutex_unlock(&list->listMutex);
+		printf("getItem: Zwolniono mutex listy\n");
 
 		return oldData;
 	}
@@ -148,77 +115,73 @@ void* getItem(TList* list) { //operacja usuwania pierwszego (najstarszego) eleme
 		list->head = NULL;
 		list->tail = NULL;
 		list->numElem--;
+		printf("getItem: Usunięto element, liczba elementów: %d\n", list->numElem);
 
 		if (list->numElem < list->maxSize){ //moze byc sytuaacja ze po usunieciu nadal elementów jest więcej niz maxSize
         	pthread_cond_signal(&list->notFull);
+			printf("getItem: Wysłano sygnał notFull\n");
 		}
         pthread_mutex_unlock(&list->listMutex);
+		printf("getItem: Zwolniono mutex listy\n");
 
 		return oldData;
 	}
 }
 
 int removeItem(TList* list, void* el) { //operacja usuwania z listy elementu el
-
+	printf("removeItem: Zajmowanie mutexa listy\n");
     pthread_mutex_lock(&list->listMutex); //co jesli dwa watki na raz beda chcialy usunac el z tej samej listy
 
 	if (list->numElem == 0) {
+		printf("removeItem: Lista pusta, brak elementu do usunięcia\n");
         pthread_mutex_unlock(&list->listMutex);
 		return 0; //lista pusta, nie ma takiego elementu
 	}
-	else if (list->numElem == 1) {  //lista z 1 elementem
 
-		if (strcmp((char*)list->head->data, (char*)el) != 0) {  // porównywanie danych
-            pthread_mutex_unlock(&list->listMutex);
-			return -1; 
-		}
+	struct Node* currNode = list->head;
+    struct Node* prevNode = NULL;
 
-		struct Node* currNode = list->head;
-		list->head = NULL;
-		list->tail = NULL;
-		free(currNode->data);
-		free(currNode);
-		list->numElem--;
-		if (list->numElem < list->maxSize){
-			pthread_cond_signal(&list->notFull); 
-		}
+	while (currNode != NULL) {
+        if (currNode->data == el) { // Znaleziono element
+			printf("removeItem: Znaleziono element do usunięcia\n");
+            break;
+        }
+        prevNode = currNode;
+        currNode = currNode->next;
+    }
+
+	if (currNode == NULL) { // Element nie został znaleziony
+		printf("removeItem: Element nie znaleziony\n");
         pthread_mutex_unlock(&list->listMutex);
-		return 1; //udalo sie usunac
-	}
-	else { // lista z min 2 elementami
-		struct Node* currNode = list->head;
-		struct Node* prevNode = NULL;
+        return -1;
+    }
 
-		while (currNode->next != NULL && strcmp((char*)currNode->data, (char*)el) != 0) { //koniec jesli znajdzie element
-			prevNode = currNode;
-			currNode = currNode->next;
-		}
+	// Usuwanie elementu
+    if (prevNode == NULL) { // Usuwamy pierwszy element (głowę)
+        list->head = currNode->next;
+        if (list->head == NULL) { // Jeśli lista miała jeden element
+            list->tail = NULL;
+        }
+    } else if (currNode->next == NULL) { // Usuwamy ostatni element (ogon)
+        list->tail = prevNode;
+        prevNode->next = NULL;
+    } else { // Usuwamy element ze środka
+        prevNode->next = currNode->next;
+    }
 
-		if (prevNode == NULL) {  //usuwana jest glowa
-			struct Node* newHead = list->head->next;
-			list->head = newHead;
-		}
-		else if (currNode->next == NULL && strcmp((char*)currNode->data, (char*)el) == 0) { //usuwanie ogona currNode->data == el
-			list->tail = prevNode;
-			prevNode->next = NULL;
-		}
-		else if (currNode->next == NULL && strcmp((char*)currNode->data, (char*)el) != 0) { //nie ma takiego elementu w liscie currNode->data != el
-            pthread_mutex_unlock(&list->listMutex);
-			return -1;
-		}
-		else { //usuwanie el po srodku
-			prevNode->next = currNode->next;
-		}
+    free(currNode->data);
+    free(currNode);
+    list->numElem--;
+	printf("removeItem: Liczba elementów po usunięciu: %d\n", list->numElem);
 
-		free(currNode->data);
-		free(currNode);
-		list->numElem--;
-		if (list->numElem < list->maxSize){ //moze byc sytuaacja ze po usunieciu nadal elementów jest więcej niz maxSize
-			pthread_cond_signal(&list->notFull);
-		}
-        pthread_mutex_unlock(&list->listMutex);
-		return 1;
-	}
+    if (list->numElem < list->maxSize) {
+        pthread_cond_signal(&list->notFull);
+		printf("removeItem: Wysłano sygnał notFull\n");
+    }
+
+    pthread_mutex_unlock(&list->listMutex); 
+	printf("removeItem: Zwolniono mutex listy\n");
+    return 1; 
 }
 
 int getCount(TList* list) {
