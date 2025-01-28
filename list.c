@@ -228,7 +228,9 @@ void appendItems(TList* list, TList* list2) {
 		list2->head = NULL;
 		list2->tail = NULL;
 		list2->numElem = 0;
-		pthread_cond_signal(&list2->notFull);
+		if (list2->numElem < list2->maxSize){
+			pthread_cond_signal(&list2->notFull);
+		}
 
 		if (list->numElem > 0){
 			pthread_cond_signal(&list->notEmpty); //np probujemy usunac element z pustej listy czekamy na sygnal
