@@ -21,6 +21,7 @@ struct TList {
     pthread_mutex_t listMutex;
     pthread_cond_t notFull;      
     pthread_cond_t notEmpty;
+    int isDestroyed;
 };
 
 typedef struct TList TList;

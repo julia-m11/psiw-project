@@ -22,6 +22,7 @@ Struktury danych używane w projekcie to:
 		pthread_mutex_t listMutex;
 		pthread_cond_t notFull;      
 		pthread_cond_t notEmpty;
+		int isDestroyed;
 		};
     ```
 	`struct Node* head` - wskaźnik na początek listy  
@@ -31,6 +32,7 @@ Struktury danych używane w projekcie to:
 	`pthread_mutex_t listMutex` - mutex do synchronizacji dostepu do danej listy  
 	`pthread_cond_t notFull` - zmienna warunkowa, sygnalizuje że lista nie jest pełna  
 	`pthread_cond_t notEmpty` - zmienna warunkowa, sygnalizuje że lista zawiera jakieś dane  
+	`int isDestroyed` - flaga mówiąca czy lista jest aktywna
   
 
 1. Węzeł listy (element listy) reprezentowany przez strukturę `Node`:

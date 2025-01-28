@@ -38,6 +38,7 @@ TList* createList(int size) { //tworzenie listy o zadanym max rozmiarze
 	list->numElem = 0;
 	list->head = NULL;
 	list->tail = NULL;
+	list->isDestroyed = 0; //lista jest aktywna
 	return list;
 }
 
@@ -47,6 +48,10 @@ void putItem(TList* list, void *el) { //operacja dodawania elementu el (reprezen
     pthread_mutex_lock(&list->listMutex); //zajecie mutexa listy
 
     while (list->numElem >= list->maxSize) { //lista ma za duzo elementow, wiec watek musi czekac
+		if (list->isDestroyed) {
+			pthread_mutex_unlock(&list->listMutex); //lista zostala w miedzyczasie usunieta
+            return;
+		}
 		printf("putItem: Lista pełna, wątek czeka na notFull\n");
         pthread_cond_wait(&list->notFull, &list->listMutex);
     }
@@ -86,6 +91,10 @@ void* getItem(TList* list) { //operacja usuwania pierwszego (najstarszego) eleme
     pthread_mutex_lock(&list->listMutex);
 
     while (list->numElem == 0) { //pusta lista - funkcja moze byc blokujaca
+		if (list->isDestroyed){
+			pthread_mutex_unlock(&list->listMutex); // lista zostala w miedzyczasie usunieta
+            return NULL;
+		}
 		printf("getItem: Lista pusta, wątek czeka na notEmpty\n");
         pthread_cond_wait(&list->notEmpty, &list->listMutex);
     }
@@ -234,7 +243,9 @@ void appendItems(TList* list, TList* list2) {
 		list2->head = NULL;  //zwolnic pamiec z nodow
 		list2->tail = NULL;
 		list2->numElem = 0;
-		pthread_cond_signal(&list2->notFull);
+		if (list2->numElem < list2->maxSize){ //jesli przed dodaniem byla pelna a watek czeka to juz nie jest
+			pthread_cond_signal(&list2->notFull);
+		}
 	}
 
     pthread_mutex_unlock(&list2->listMutex);
@@ -244,6 +255,10 @@ void appendItems(TList* list, TList* list2) {
 void destroyList(TList* list) {  //nie bedzie przeszkadzane
 
 	pthread_mutex_lock(&list->listMutex);
+	list->isDestroyed =1;
+
+	pthread_cond_broadcast(&list->notFull);  // Budzimy wszystkie wątki oczekujace na ta liste
+    pthread_cond_broadcast(&list->notEmpty);
 
 	struct Node* temp = list->head;
 	while (temp != NULL) {
