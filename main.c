@@ -5,148 +5,135 @@
 #include <unistd.h>
 #include <string.h>
 
+typedef struct {
+    TList* list;
+    void* data;
+    int threadId;
+} ThreadArgs;
 
-#define NUM_THREADS 3
-
-// Funkcja dla testu 1 (dodawanie i usuwanie elementów)
-void* testAddAndRemove(void* arg) {
-    TList* list = (TList*)arg;
-    for (int i = 0; i < 10; ++i) {
-        char* item = (char*)malloc(20);
-        snprintf(item, 20, "Item %d", i);
-        putItem(list, item);
-        printf("Added: %s\n", item);
-
-        usleep(100000);  // Symulacja opóźnienia
-
-        void* removedItem = getItem(list);
-        printf("Removed: %s\n", (char*)removedItem);
-        free(removedItem);
-    }
+void* putThreadFunction(void* arg) {
+    ThreadArgs* args = (ThreadArgs*)arg;
+    putItem(args->list, args->data);
+    printf("Wątek %d: dodano element %s\n", args->threadId, (char*)args->data);
     return NULL;
 }
 
-// Funkcja dla testu 2 (testowanie pełnej listy)
-void* testFullList(void* arg) {
-    TList* list = (TList*)arg;
-    for (int i = 0; i < 10; ++i) {
-        char* item = (char*)malloc(20);
-        snprintf(item, 20, "Item %d", i);
-        putItem(list, item);
-        printf("Added: %s\n", item);
-    }
+void* removeThreadFunction(void* arg) {
+    ThreadArgs* args = (ThreadArgs*)arg;
+    int result = removeItem(args->list, args->data);
+    printf("Wątek %d: próba usunięcia elementu %s, wynik: %d\n", 
+           args->threadId, (char*)args->data, result);
     return NULL;
 }
 
-// Funkcja dla testu 3 (usuwanie elementu)
-// void* testRemoveItem(void* arg) {
-//     TList* list = (TList*)arg;
-//     for (int i = 0; i < 10; ++i) {
-//         char* item = (char*)malloc(20);
-//         snprintf(item, 20, "Item %d", i);
-//         putItem(list, item);
-//     }
-
-//     // Usuwamy elementy
-//     for (int i = 0; i < 5; ++i) {
-//         printf("Removing Item %d\n", i);
-//         char* itemToRemove = NULL;
-// for (struct Node* curr = list->head; curr != NULL; curr = curr->next) {
-//     if (strcmp((char*)curr->data, "Item 1") == 0) {
-//         itemToRemove = curr->data;
-//         break;
-//     }
-// }
-// if (itemToRemove && removeItem(list, itemToRemove) == 1) {
-//             printf("Removed Item 1\n");
-//         } else {
-//             printf("Item not found\n");
-//         }
-//     }
-//     return NULL;
-// }
-void* testRemoveItem(void* arg) {
-    TList* list = (TList*)arg;
-    
-    // Najpierw opróżniamy listę
-    while (list->numElem > 0) {
-        void* item = getItem(list);
+void* getThreadFunction(void* arg) {
+    ThreadArgs* args = (ThreadArgs*)arg;
+    printf("Wątek %d: czekanie na element...\n", args->threadId);
+    void* item = getItem(args->list);
+    if(item) {
+        printf("Wątek %d: pobrano element %s\n", args->threadId, (char*)item);
         free(item);
-    }
-    
-    // Teraz dodajemy własne elementy
-    char* items[5];  // zmniejszamy liczbę elementów
-    for (int i = 0; i < 5; ++i) {
-        items[i] = (char*)malloc(20);
-        snprintf(items[i], 20, "Item %d", i);
-        putItem(list, items[i]);
-        printf("Added for removal: %s\n", items[i]);
-    }
-
-    // Próbujemy usunąć konkretny element
-    for (int i = 0; i < 3; ++i) {  // zmniejszamy liczbę prób
-        printf("Trying to remove Item 1\n");
-        struct Node* curr = list->head;
-        void* itemToRemove = NULL;
-        
-        // Szukamy elementu "Item 1"
-        while (curr != NULL) {
-            if (strcmp((char*)curr->data, "Item 1") == 0) {
-                itemToRemove = curr->data;
-                break;
-            }
-            curr = curr->next;
-        }
-        
-        if (itemToRemove && removeItem(list, itemToRemove) == 1) {
-            printf("Successfully removed Item 1\n");
-        } else {
-            printf("Item 1 not found\n");
-        }
-        usleep(100000);  // krótka przerwa między próbami
     }
     return NULL;
 }
 
 int main() {
-    TList* list = createList(10);
-    pthread_t threads[NUM_THREADS];
+    printf("\n=== Test 1: Dodawanie i usuwanie elementów ===\n");
+    TList* list = createList(5);
+    pthread_t threads[6];
+    ThreadArgs args[6];
     
-    // Test 1
-    printf("\n=== Test 1: Add and Remove ===\n");
-    for (int i = 0; i < NUM_THREADS; ++i) {
-        pthread_create(&threads[i], NULL, testAddAndRemove, list);
-    }
-    for (int i = 0; i < NUM_THREADS; ++i) {
+    char* data1 = strdup("Item1");
+    char* data2 = strdup("Item2");
+    char* data3 = strdup("Item3");
+
+    // Dodawanie elementów
+    args[0].list = list;
+    args[0].data = data1;
+    args[0].threadId = 1;
+    pthread_create(&threads[0], NULL, putThreadFunction, &args[0]);
+
+    args[1].list = list;
+    args[1].data = data2;
+    args[1].threadId = 2;
+    pthread_create(&threads[1], NULL, putThreadFunction, &args[1]);
+
+    args[2].list = list;
+    args[2].data = data3;
+    args[2].threadId = 3;
+    pthread_create(&threads[2], NULL, putThreadFunction, &args[2]);
+
+    // Czekamy na dodanie elementów
+    for(int i = 0; i < 3; i++) {
         pthread_join(threads[i], NULL);
     }
-    
-    // Czyszczenie listy przed testem 2
-    while (list->numElem > 0) {
-        void* item = getItem(list);
-        free(item);
-    }
-    
-    // Test 2
-    printf("\n=== Test 2: Full List ===\n");
-    pthread_t fullListThread;
-    pthread_create(&fullListThread, NULL, testFullList, list);
-    pthread_join(fullListThread, NULL);
-    
-    // Czyszczenie listy przed testem 3
-    while (list->numElem > 0) {
-        void* item = getItem(list);
-        free(item);
-    }
-    
-    // Test 3
-    printf("\n=== Test 3: Remove Item ===\n");
-    pthread_t removeItemThread;
-    pthread_create(&removeItemThread, NULL, testRemoveItem, list);
-    pthread_join(removeItemThread, NULL);
 
-    printf("\nFinal list contents:\n");
+    printf("\nStan listy po dodaniu elementów:\n");
+    showList(list);
+
+    // Usuwanie elementów
+    args[3].list = list;
+    args[3].data = data1;
+    args[3].threadId = 4;
+    pthread_create(&threads[3], NULL, removeThreadFunction, &args[3]);
+
+    args[4].list = list;
+    args[4].data = data2;
+    args[4].threadId = 5;
+    pthread_create(&threads[4], NULL, removeThreadFunction, &args[4]);
+
+    args[5].list = list;
+    args[5].data = data2; 
+    args[5].threadId = 6;
+    pthread_create(&threads[5], NULL, removeThreadFunction, &args[5]);
+
+    
+    for(int i = 3; i < 6; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    printf("\nStan końcowy listy:\n");
     showList(list);
     destroyList(list);
+
+    printf("\n=== Test 2: Zmiana rozmiaru listy ===\n");
+    list = createList(3);
+    
+    // Dodajemy 3 elementy
+    char* item1 = strdup("First");
+    char* item2 = strdup("Second");
+    char* item3 = strdup("Third");
+    
+    args[0].list = list;
+    args[0].data = item1;
+    args[0].threadId = 1;
+    putThreadFunction(&args[0]);
+    
+    args[1].list = list;
+    args[1].data = item2;
+    args[1].threadId = 2;
+    putThreadFunction(&args[1]);
+    
+    args[2].list = list;
+    args[2].data = item3;
+    args[2].threadId = 3;
+    putThreadFunction(&args[2]);
+
+    printf("\nStan listy przed zmianą rozmiaru:\n");
+    showList(list);
+    
+    printf("\nZmniejszanie rozmiaru listy do 2...\n");
+    setMaxSize(list, 2);
+
+    // Próba usunięcia elementu
+    args[3].list = list;
+    args[3].data = item1;
+    args[3].threadId = 4;
+    removeThreadFunction(&args[3]);
+
+    printf("\nStan końcowy listy:\n");
+    showList(list);
+    destroyList(list);
+
     return 0;
 }
